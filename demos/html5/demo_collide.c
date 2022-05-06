@@ -5,12 +5,12 @@
 
 #include "fwk.h"
 
+// -- demo
+
 int paused;
 camera_t cam;
 
 void game_loop(void *userdata) {
-    if(!window_swap()) return;
-
     // key handler
     if (input_down(KEY_F11) ) window_fullscreen( window_has_fullscreen()^1 );
     if (input_down(KEY_ESC) ) window_loop_exit(); // @todo: break -> window_close()
@@ -23,22 +23,50 @@ void game_loop(void *userdata) {
     dy = dy + delta * 0.8f;
 
     // fps camera
-    bool active = ui_active() || ui_hover() || gizmo_active() ? false : input(MOUSE_L) || input(MOUSE_M) || input(MOUSE_R);
-    window_cursor( !active );
+    {
+        vec3 move = {0};
+        vec2 view = {0};
 
-    if( active ) cam.speed = clampf(cam.speed + input_diff(MOUSE_W) / 10, 0.05f, 5.0f);
-    vec2 mouse = scale2(vec2(input_diff(MOUSE_X), -input_diff(MOUSE_Y)), 0.2f * active);
-    vec3 wasdec = scale3(vec3(input(KEY_D)-input(KEY_A),input(KEY_E)-input(KEY_C),input(KEY_W)-input(KEY_S)), cam.speed);
-    camera_move(&cam, wasdec.x,wasdec.y,wasdec.z);
-    camera_fps(&cam, mouse.x,mouse.y);
+        // show/hide cursor
+        bool dragging = input(MOUSE_L) || input(MOUSE_M) || input(MOUSE_R);
+        if( ui_active() || ui_hover() || gizmo_active() || input_touch_active() ) dragging = false;
+        window_cursor( !dragging );
+
+        // keyboard/mouse
+        if( dragging ) cam.speed = clampf(cam.speed + input_diff(MOUSE_W) / 10, 0.05f, 5.0f);
+        vec3 wasdec = scale3(vec3(input(KEY_D)-input(KEY_A),input(KEY_E)-input(KEY_C),input(KEY_W)-input(KEY_S)), cam.speed);
+        vec2 mouse = scale2(vec2(input_diff(MOUSE_X), -input_diff(MOUSE_Y)), 0.2f * dragging);
+        move = add3(move, wasdec);
+        view = add2(view, mouse);
+
+        // gamepad
+        vec2 filtered_lpad = input_filter_deadzone(input2(GAMEPAD_LPAD), 0.15f /*15% deadzone*/);
+        vec2 filtered_rpad = input_filter_deadzone(input2(GAMEPAD_RPAD), 0.15f /*15% deadzone*/);
+        vec3 gamepad_move = scale3(vec3(filtered_lpad.x, input(GAMEPAD_LT) - input(GAMEPAD_RT), filtered_lpad.y), 1.0f);
+        vec2 gamepad_view = scale2(filtered_rpad, 1.0f);
+        move = add3(move, gamepad_move);
+        view = add2(view, gamepad_view);
+
+        // multi-touch
+        vec2 touch_move = input_touch_delta_from_origin(0, 0.0125f /*sensitivityFwd*/); // button #0 (left border)
+        vec2 touch_view = input_touch_delta(1, 0.125f /*sensitivityRot*/);              // button #1 (right border) 
+        move = add3(move, vec3(touch_move.x, 0, -touch_move.y));
+        view = add2(view, vec2(touch_view.x, -touch_view.y));
+
+        // apply inputs
+        camera_move(&cam, move.x,move.y,move.z);
+        camera_fps(&cam, view.x,view.y);
+    }
 
     // projview matrix
     mat44 projview; multiply44x2(projview, cam.proj, cam.view);
 
     // rendering
     viewport_color3(vec3(0.15,0.15,0.15));
+#if 0
     viewport_clear(true, true);
     viewport_clip(vec2(0,0), vec2(window_width(), window_height()));
+#endif
 
     // debug draw collisions
     {
@@ -546,11 +574,17 @@ void game_loop(void *userdata) {
     }
 
     //fx_begin();
-    ddraw_flush();
+    //ddraw_flush();
     //fx_end();
 
-    if( ui_begin("UI", 0) ) {
-        ui_label("test label");
+    if( ui_begin("Audio", 0) ) {
+        if( ui_button("test audio") ) {
+            // audio (both clips & streams)
+            static audio_t voice; voice = audio_clip("coin.wav"); // "pew.sfxr"
+            static audio_t stream; stream = audio_stream("wrath_of_the_djinn.xm"); // "larry.mid"
+            audio_play(voice, 0);
+            audio_play(stream, 0);
+        }
         ui_end();
     }
 
@@ -563,6 +597,7 @@ void game_loop(void *userdata) {
         ui_end();
     }
 }
+
 
 int main(void) {
     // 75% sized, msaa x4 enabled

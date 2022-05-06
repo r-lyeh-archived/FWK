@@ -214,7 +214,7 @@ R. Documentation pass: API, functions, samples, examples, pipeline. #5
 int main() {
     window_create(75.0, 0); // 75% size, no extra flags
     while( window_swap() && !input(KEY_ESC) ) { // game loop
-        puts("hello fwk! from C");
+        puts("hello FWK from C!");
     }
 }
 ```
@@ -223,15 +223,15 @@ int main() {
 local fwk = require("fwk") -- Minimal Lua sample
 fwk.window_create(75.0,0) -- 75% size, no extra flags
 while fwk.window_swap() and fwk.input(fwk.KEY_ESC) == 0 do -- game loop
-    print("hello fwk! from Lua")
+    print("hello FWK from Lua!")
 end
 ```
 
 ```C
 #include "fwk.h" // Minimal HTML5 sample
 void render(void *arg) {
-    if( window_swap() && !input(KEY_ESC) ) {
-        puts("hello fwk! from HTML5");
+    if( !input(KEY_ESC) ) { 
+        puts("hello FWK from HTML5!");
     }
 }
 int main() {
@@ -282,7 +282,7 @@ echo #endif // FWK_C >> fwk-single-header.c
 ## Extra tips
 - Dropped files into game window will be imported & saved into [`editor/import`](editor/import) folder.
 - Linux/OSX users can optionally install wine to use the Windows pipeline as an alternate asset pipeline (use `--with-wine` flag).
-- Although not recommended, you can remove the cooking stage by invoking `--with-jobs=0` or by removing the [`editor/tools`](editor/tools) folder.
+- Although not recommended, you can remove the cooking stage by invoking `--with-cook-jobs=0` or by removing the [`editor/tools`](editor/tools) folder.
 - Depending on your IDE, you might need to [split all amalgamated](#Amalgamation) files when debugging FWK.
 <!-- - On windows + vc, you can use `make bindings` or `make docs` to generate everything prior to a release --><!-- gamecontrollerdb.txt -->
 
@@ -352,40 +352,10 @@ Any contribution to this repository is implicitly subjected to the same release 
 - Special thanks to [@ands](https://github.com/ands) (PD), [@barerose](https://github.com/barerose) (CC0), [@datenwolf](https://github.com/datenwolf) (WTFPL2), [@evanw](https://github.com/evanw) (CC0), [@glampert](https://github.com/glampert) (PD), [@krig](https://github.com/krig) (CC0), [@sgorsten](https://github.com/sgorsten) (Unlicense) and [@vurtun](https://github.com/vurtun) (PD) for their math libraries.
 
 ## Links
+<p>
 <a href="https://github.com/r-lyeh/FWK/issues"><img alt="Issues" src="https://img.shields.io/github/issues-raw/r-lyeh/FWK.svg"/></a>
 <a href="https://discord.gg/vu6Vt9d"><img alt="Discord" src="https://img.shields.io/discord/270565488365535232?color=5865F2&label=chat&logo=discord&logoColor=white"/></a><br/>
 
 Still looking for alternatives?
-[amulet](https://github.com/ianmaclarty/amulet),
-[aroma](https://github.com/leafo/aroma/),
-[astera](https://github.com/tek256/astera),
-[blendelf](https://github.com/jesterKing/BlendELF),
-[bullordengine](https://github.com/MarilynDafa/Bulllord-Engine),
-[candle](https://github.com/EvilPudding/candle),
-[cave](https://github.com/kieselsteini/cave),
-[chickpea](https://github.com/ivansafrin/chickpea),
-[corange](https://github.com/orangeduck/Corange),
-[cute](https://github.com/RandyGaul/cute_framework),
-[dos-like](https://github.com/mattiasgustavsson/dos-like),
-[ejoy2d](https://github.com/ejoy/ejoy2d),
-[exengine](https://github.com/exezin/exengine),
-[gunslinger](https://github.com/MrFrenik/gunslinger),
-[hate](https://github.com/excessive/hate),
-[island](https://github.com/island-org/island),
-[juno](https://github.com/rxi/juno),
-[l](https://github.com/Lyatus/L),
-[lgf](https://github.com/Planimeter/lgf),
-[limbus](https://github.com/redien/limbus),
-[love](https://github.com/love2d/love/),
-[lovr](https://github.com/bjornbytes/lovr),
-[mini3d](https://github.com/mini3d/mini3d),
-[mintaro](https://github.com/mackron/mintaro),
-[mio](https://github.com/ccxvii/mio),
-[opensource](https://github.com/w23/OpenSource),
-[ouzel](https://github.com/elnormous/ouzel/),
-[pez](https://github.com/prideout/pez),
-[pixie](https://github.com/mattiasgustavsson/pixie),
-[punity](https://github.com/martincohen/Punity),
-[ricotech](https://github.com/dbechrd/RicoTech),
-[rizz](https://github.com/septag/rizz),
-[tigr](https://github.com/erkkah/tigr),
+[amulet](https://github.com/ianmaclarty/amulet), [aroma](https://github.com/leafo/aroma/), [astera](https://github.com/tek256/astera), [blendelf](https://github.com/jesterKing/BlendELF), [bullordengine](https://github.com/MarilynDafa/Bulllord-Engine), [candle](https://github.com/EvilPudding/candle), [cave](https://github.com/kieselsteini/cave), [chickpea](https://github.com/ivansafrin/chickpea), [corange](https://github.com/orangeduck/Corange), [cute](https://github.com/RandyGaul/cute_framework), [dos-like](https://github.com/mattiasgustavsson/dos-like), [ejoy2d](https://github.com/ejoy/ejoy2d), [exengine](https://github.com/exezin/exengine), [gunslinger](https://github.com/MrFrenik/gunslinger), [hate](https://github.com/excessive/hate), [island](https://github.com/island-org/island), [juno](https://github.com/rxi/juno), [l](https://github.com/Lyatus/L), [lgf](https://github.com/Planimeter/lgf), [limbus](https://github.com/redien/limbus), [love](https://github.com/love2d/love/), [lovr](https://github.com/bjornbytes/lovr), [mini3d](https://github.com/mini3d/mini3d), [mintaro](https://github.com/mackron/mintaro), [mio](https://github.com/ccxvii/mio), [opensource](https://github.com/w23/OpenSource), [ouzel](https://github.com/elnormous/ouzel/), [pez](https://github.com/prideout/pez), [pixie](https://github.com/mattiasgustavsson/pixie), [punity](https://github.com/martincohen/Punity), [ricotech](https://github.com/dbechrd/RicoTech), [rizz](https://github.com/septag/rizz), [tigr](https://github.com/erkkah/tigr),
+</p>

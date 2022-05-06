@@ -1586,7 +1586,7 @@ API vec2  font_highlight(const char *text, const void *colors);
 // input framework
 // - rlyeh, public domain
 //
-// @todo: touch, window
+// @todo: window
 // @todo: for extra savings (168->72 bytes), promote bits to real bits (/8 %8) & normalized floats [-1,+1] to shorts or chars
 // @todo: GAMEPAD_A|2, MOUSE_L|1, KEY_C|3
 // @todo: load/save
@@ -1600,8 +1600,8 @@ API int         input_use( int controller_id ); // [0..3]
 
 API float       input( int vk );
 API vec2        input2( int vk );
-API float       input_diff( int vk );
-API vec2        input_diff2( int vk );
+API float       input_diff( int vk ); // @todo: rename diff->delta
+API vec2        input_diff2( int vk ); // @todo: rename diff2->delta2
 
 // -- extended polling api (read input at Nth frame ago)
 
@@ -1628,8 +1628,21 @@ API int         input_chord4( int vk1, int vk2, int vk3, int vk4 ); // all vk1 &
 
 API float       input_filter_positive( float v ); // [-1..1] -> [0..1]
 API vec2        input_filter_positive2( vec2 v ); // [-1..1] -> [0..1]
-API vec2        input_filter_deadzone( vec2 v, float deadzone );
-API vec2        input_filter_deadzone_4way( vec2 v, float deadzone );
+API vec2        input_filter_deadzone( vec2 v, float deadzone_treshold );
+API vec2        input_filter_deadzone_4way( vec2 v, float deadzone_treshold );
+
+// -- multi-touch 
+
+enum TOUCH_BUTTONS {
+	TOUCH_0,    // defaults to left screen area. input_touch_area() to override
+	TOUCH_1,    // defaults to right screen area. input_touch_area() to override
+};
+
+API void        input_touch_area(unsigned button, vec2 begin_coord_ndc, vec2 end_coord_ndc);
+API vec2        input_touch(unsigned button, float sensitivity);                   // absolute position in 2d coords
+API vec2        input_touch_delta(unsigned button, float sensitivity);             // delta from previous position
+API vec2        input_touch_delta_from_origin(unsigned button, float sensitivity); // relative position from initial touch
+API bool        input_touch_active();
 
 // -- utils
 
@@ -1916,14 +1929,14 @@ static threadlocal void *obj_tmpalloc;
         if(!found) found = map_insert(profiler, name, (struct profile_t){0}); \
         found->stat += accum; \
         } } while(0) ///+
-#   define profile_render() if(profiler && profiler_enabled) do { \
+#   define profile_render() do { if(profiler && profiler_enabled) { \
         for(float _i = ui_begin("Profiler",0), _r; _i ; ui_end(), _i = 0) { \
             for each_map_ptr(profiler, const char *, key, struct profile_t, val ) \
                 if( !isnan(val->stat) ) ui_slider2(va("Stat: %s", *key), (_r = val->stat, &_r), va("%.2f", val->stat)), val->stat = 0; \
             ui_separator(); \
             for each_map_ptr(profiler, const char *, key, struct profile_t, val ) \
                 if( isnan(val->stat) ) ui_slider2(*key, (_r = val->avg/1000.0, &_r), va("%.2f ms", val->avg/1000.0)); \
-        } } while(0)
+        } } } while(0)
 struct profile_t { double stat; int32_t cost, avg; }; ///-
 typedef map(char *, struct profile_t) profiler_t; ///-
 extern API profiler_t profiler; ///-
@@ -2374,7 +2387,7 @@ API void ddraw_cylinder(vec3 center, float height, int segments);
 API void ddraw_sphere(vec3 pos, float radius);
 API void ddraw_square(vec3 pos, float radius);
 API void ddraw_text(vec3 pos, float scale, const char *text);
-API void ddraw_text2d(vec2 pos, float scale, const char *text);
+API void ddraw_text2d(vec2 pos, const char *text);
 API void ddraw_triangle(vec3 p1, vec3 p2, vec3 p3);
 //
 API void ddraw_prism(vec3 center, float radius, float height, vec3 normal, int segments);
@@ -2766,17 +2779,20 @@ enum WINDOW_FLAGS {
 
 API bool     window_create(float scale, unsigned flags);
 API bool     window_create_from_handle(void *handle, float scale, unsigned flags);
-API int      window_swap();
 
-// run main loop function continuously (emscripten only)
-// exit from main loop function (emscripten only)
-API void     window_loop(void (*function)(void* loopArg), void* loopArg );
-API void     window_loop_exit();
+API int      window_frame_begin();
+API void     window_frame_end();
+API void     window_frame_swap();
+API int      window_swap(); // single function that combines above functions (desktop only)
+
+API void     window_loop(void (*function)(void* loopArg), void* loopArg ); // run main loop function continuously (emscripten only)
+API void     window_loop_exit(); // exit from main loop function (emscripten only)
 
 API void     window_title(const char *title);
 API void     window_icon(const char *file_icon);
 API vec2     window_canvas();
 API void*    window_handle();
+API char*    window_stats();
 
 API uint64_t window_frame();
 API int      window_width();
@@ -2786,8 +2802,8 @@ API double   window_time();
 API double   window_delta();
 API double   window_fps();
 
-API bool     window_hook(void (*func)(), void* userdata);
-API void     window_unhook(void (*func)());
+// API bool  window_hook(void (*func)(), void* userdata); // deprecated
+// API void  window_unhook(void (*func)()); // deprecated
 
 API void     window_focus(); // window attribute api using haz catz language for now
 API int      window_has_focus();

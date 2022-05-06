@@ -1,83 +1,6 @@
 #include "fwk.h"
 
-#if 0
-
-// -----------------------------------------------------------------------------
-// image
-
-// Image: manipulating functions
-struct nk_image image_file(const char* filename);
-struct nk_image image_load(const void* membuf, int membufSize);
-void image_free(struct nk_image* img);
-
-#define APP_IS_POWER_OF_2(value) ((value & (value - 1)) == 0)
-
-struct nk_image nk_image_create(unsigned char *data, int x, int y, int n) {
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    #if (defined(APP_USE_OPENGL) && (APP_USE_OPENGL == NGL_ES2)) || defined(__EMSCRIPTEN__)
-        /* WebGL via Emscripten */
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        
-        if (APP_IS_POWER_OF_2(x) && APP_IS_POWER_OF_2(y)) {
-            glGenerateMipmap(GL_TEXTURE_2D);
-        } else {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        }
-    #else
-        /* Desktop OpenGL */
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-        
-        #if !defined(GL_GENERATE_MIPMAP)
-            /* from GLEW.h, OpenGL 1.4 only! */
-            #define GL_GENERATE_MIPMAP 0x8191
-        #endif
-            
-        #if defined(APP_USE_OPENGL) && (APP_USE_OPENGL > 2)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-            glGenerateMipmap(GL_TEXTURE_2D);
-        #else
-            glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE); 
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        #endif
-
-    #endif /* EMSCRIPTEN */
-    
-    stbi_image_free(data);
-    return nk_image_id((int)tex);
-}
-
-struct nk_image image_load(const void* membuf, int membufSize) {
-    int x,y,n;    
-    unsigned char *data = stbi_load_from_memory((const stbi_uc*) membuf, membufSize, &x, &y, &n, 0);
-    return nk_image_create(data, x, y, n);
-}
-
-struct nk_image image_file(const char* filename) {
-    int x,y,n;
-    unsigned char *data = stbi_load(filename, &x, &y, &n, 0);
-    return nk_image_create(data, x, y, n);
-}
-
-void image_free(struct nk_image* img) {
-    if( img != NULL ) {
-        glDeleteTextures(1,(const GLuint*)&(img->handle.id) );
-        img->w = 0;
-        img->h = 0;
-        img = NULL;
-    }
-}
-#endif
-
-
 void render(void *arg) {
-    if( !window_swap() ) return;
-
     static int integer = 42;
     static bool toggle = true;
     static bool boolean = true;
@@ -124,6 +47,8 @@ void render(void *arg) {
 
         ui_end();
     }
+
+    input_demo();
 }
 
 int main() {

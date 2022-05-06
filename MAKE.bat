@@ -226,12 +226,12 @@ if "%1"=="github" (
     call make.bat bindings
 
     call make.bat split
-    rd /q /s editor\docs\lib
-    md editor\docs\lib
-    move /y 3rd_*.? editor\docs\lib
-    move /y fwk_*.? editor\docs\lib
-    echo.> "editor\docs\lib\; for browsing purposes. do not compile these"
-    echo.> "editor\docs\lib\; required sources are at root folder"
+    rd /q /s editor\split
+    md editor\split
+    move /y 3rd_*.? editor\split
+    move /y fwk_*.? editor\split
+    echo.> "editor\split\; for browsing purposes. do not compile these"
+    echo.> "editor\split\; required sources can be found at root folder"
 
     call make.bat tidy
 

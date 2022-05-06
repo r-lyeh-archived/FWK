@@ -65,7 +65,7 @@
         function getDemoScript(name) {
             if (name)
                 return name;
-            return "out.js";
+            return "index.js";
         }
 
         function getParameter(name) {
@@ -120,6 +120,22 @@
             loadScript(getDemoScript(getParameter("run")));
         })();
     </script>
+
     {{{ SCRIPT }}}
+
+    <button onclick="openFullscreen();" style="position:relative; z-index: 1000;">&#x26F6;</button>
+    <script>
+    function openFullscreen() {
+      var elem = document.getElementById("canvas");
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) { /* Safari */
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) { /* IE11 */
+        elem.msRequestFullscreen();
+      }
+    }
+    </script>
+
   </body>
 </html>

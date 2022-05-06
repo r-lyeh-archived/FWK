@@ -33,12 +33,14 @@ exit
 if "%1"=="" MAKE.bat demo_collide.c
 
 rem clone emscripten sdk
-git clone https://github.com/emscripten-core/emsdk ..\..\..\emsdk
-pushd ..\..\..\emsdk
-	call emsdk install  3.0.0 && rem latest
-	call emsdk activate 3.0.0 && rem latest
-	call emsdk_env.bat
-popd
+if not exist "..\..\..\emsdk" (
+	git clone https://github.com/emscripten-core/emsdk ..\..\..\emsdk
+	pushd ..\..\..\emsdk
+		call emsdk install  3.0.0 && rem latest
+		call emsdk activate 3.0.0 && rem latest
+	popd
+)
+if "%EMSDK%"=="" call ..\..\..\emsdk\emsdk_env.bat
 
 rem cook art
 ..\..\editor\tools\cook.exe

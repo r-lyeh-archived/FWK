@@ -919,7 +919,7 @@ const char *pathfile_from_handle(FILE *fp) {
 
 void fwk_init();
 static void fwk_pre_init();
-static void fwk_post_init(float refresh_rate);
+static void fwk_post_init(float);
 #line 0
 
 #line 1 "fwk_profile.c"
@@ -2949,7 +2949,7 @@ int cooker_progress() {
 }
 
 int cooker_jobs() {
-    int num_jobs = optioni("--with-jobs", ifdef(tcc, 1, cpu_cores())), max_jobs = countof(jobs);
+    int num_jobs = optioni("--with-cook-jobs", ifdef(tcc, 1, cpu_cores())), max_jobs = countof(jobs);
     ifdef(ems, num_jobs = 0);
     return clampi(num_jobs, 0, max_jobs);
 }
@@ -3374,7 +3374,7 @@ FILE *file_temp(void) {
 // storage (emscripten only)
 
 void storage_mount(const char* folder) {
-    #ifdef __EMSCRIPTEN__
+    #if is(ems)
         emscripten_run_script(va("FS.mkdir('%s'); FS.mount(IDBFS, {}, '%s');", folder, folder));
     #else
         (void)folder;
@@ -3382,21 +3382,21 @@ void storage_mount(const char* folder) {
 }
 
 void storage_read() {
-    #ifdef __EMSCRIPTEN__
+    #if is(ems)
     EM_ASM(
         /* sync from persisted state into memory */
         FS.syncfs(true, function (err) {
-          assert(!err);
+            assert(!err);
         });
     );
     #endif
 }
 
 void storage_flush() {
-    #ifdef __EMSCRIPTEN__
+    #if is(ems)
     EM_ASM(
         FS.syncfs(false, function (err) {
-          assert(!err);
+            assert(!err);
         });
     );
     #endif
@@ -6135,6 +6135,11 @@ vec2 font_rect(const char *str) {
 #line 0
 
 #line 1 "fwk_input.c"
+// input framework
+// - rlyeh, public domain
+//
+// multi-touch(emscripten) port based on code by @procedural (MIT-0 licensed)
+
 // gotta love linux
 #ifdef __linux
 #undef KEY_ESC
@@ -6320,8 +6325,10 @@ void input_init() {
     do_once {
         input_mappings();
     }
+    #if 0 // deprecated
     void input_update();
     window_hook(input_update, NULL);
+    #endif
 }
 
 void input_update() {
@@ -6343,7 +6350,8 @@ void input_update() {
     floats[MOUSE_X] = mx;
     floats[MOUSE_Y] = my;
     struct nk_glfw* glfw = glfwGetWindowUserPointer(win); // from nuklear, because it is overriding glfwSetScrollCallback()
-    floats[MOUSE_W] = !glfw ? 0 : mouse_wheel_old + (float)glfw->scroll.x + (float)glfw->scroll.y;
+    floats[MOUSE_W] = !glfw ? 0 : mouse_wheel_old + (float)glfw->scroll_bak.x + (float)glfw->scroll_bak.y;
+    glfw->scroll_bak.x = glfw->scroll_bak.y = 0;
     bits[MOUSE_L] = (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
     bits[MOUSE_M] = (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);
     bits[MOUSE_R] = (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
@@ -6371,7 +6379,64 @@ void input_update() {
     #undef k
     #undef k2
 
-#if !is(ems) // error: use of undeclared identifier 'glfwGetGamepadName', 'GLFW_GAMEPAD_BUTTON_A' [etc.]
+#if is(ems)
+    {
+        int jid = 0; // @fixme
+        EmscriptenGamepadEvent state = {0};
+
+        if( emscripten_sample_gamepad_data() == EMSCRIPTEN_RESULT_SUCCESS ) {
+            if( emscripten_get_gamepad_status(jid, &state) == EMSCRIPTEN_RESULT_SUCCESS ) {
+                // hardcoded for Xbox controller
+                if( state.numAxes >= 4 && state.numButtons >= 16 ) {
+
+                    bits[GAMEPAD_CONNECTED] = 1; // !!state.connected
+                    strings[GAMEPAD_GUID] = va("%s", state.id);
+                    strings[GAMEPAD_NAME] = va("emscripten %s", state.mapping);
+                    floats[GAMEPAD_BATTERY] = 100;
+
+                    // e.digitalButton[i], e.analogButton[i]
+
+                    bits[GAMEPAD_A] = state.analogButton[0]; // cross
+                    bits[GAMEPAD_B] = state.analogButton[1]; // circle
+                    bits[GAMEPAD_X] = state.analogButton[2]; // square
+                    bits[GAMEPAD_Y] = state.analogButton[3]; // triangle
+
+                    bits[GAMEPAD_UP] = state.analogButton[12];
+                    bits[GAMEPAD_DOWN] = state.analogButton[13];
+                    bits[GAMEPAD_LEFT] = state.analogButton[14];
+                    bits[GAMEPAD_RIGHT] = state.analogButton[15];
+
+                    bits[GAMEPAD_LB] = state.analogButton[4];
+                    bits[GAMEPAD_RB] = state.analogButton[5];
+                    bits[GAMEPAD_MENU] = state.analogButton[8];
+                    bits[GAMEPAD_START] = state.analogButton[9];
+
+                    bits[GAMEPAD_LTHUMB] = state.analogButton[10];
+                    bits[GAMEPAD_RTHUMB] = state.analogButton[11];
+
+                    floats[GAMEPAD_LT] = state.analogButton[6];
+                    floats[GAMEPAD_RT] = state.analogButton[7];
+
+                    floats[GAMEPAD_LPADX] = state.axis[0];
+                    floats[GAMEPAD_LPADY] = -state.axis[1];
+
+                    floats[GAMEPAD_RPADX] = state.axis[2];
+                    floats[GAMEPAD_RPADY] = -state.axis[3];
+                }
+            }
+        }
+
+        if( 0 && ui_begin("emspad", 0)) {
+            for(int i = 0; i <= 5; ++i )
+            ui_labelf( "axis #%d: %5.2f", i, (float)state.axis[i] );
+
+            for(int i = 0; i <= 15; ++i )
+            ui_labelf( "button #%d: %d %5.2f", i, state.digitalButton[i], (float)state.analogButton[i] );
+
+            ui_end();
+        }
+    }
+#else
     int jid = GLFW_JOYSTICK_1 + 0; // @fixme
     if( glfwGetGamepadName(jid) ) { // glfwJoystickPresent(jid) && glfwJoystickIsGamepad(jid) ) {
         bits[GAMEPAD_CONNECTED] = 1;
@@ -6496,10 +6561,10 @@ int input_click2( int vk, int ms ) {
 
 // --- filters
 
-float input_filter_positive( float v ) {
+float input_filter_positive( float v ) { // [-1..1] -> [0..1]
     return ( v + 1 ) * 0.5f;
 }
-vec2  input_filter_positive2( vec2 v ) {
+vec2  input_filter_positive2( vec2 v ) { // [-1..1] -> [0..1]
     return scale2(inc2(v,1), 0.5f);
 }
 
@@ -6565,6 +6630,120 @@ char input_keychar(unsigned code) {
 
     return '\0';
 }
+
+// -- multi-touch input
+// multi-touch(emscripten) port based on code by @procedural (MIT-0 licensed)
+
+#if !is(ems)
+
+void touch_init() {}
+void touch_flush() {}
+void input_touch_area(unsigned button, vec2 from, vec2 to)  {}
+vec2 input_touch(unsigned button, float sensitivity) { return vec2(0,0); }
+vec2 input_touch_delta_from_origin(unsigned button, float sensitivity) { return vec2(0,0); }
+vec2 input_touch_delta(unsigned button, float sensitivity) { return vec2(0,0); }
+bool input_touch_active() { return false; }
+
+#else
+
+static struct touch {
+    bool init;
+    vec2 move, cached, origin, prev;
+    vec4 area;
+} touch[2] = {0};
+
+static EM_BOOL touch_move(int eventType, const EmscriptenTouchEvent *e, void *userData) {
+    for( int i = 0; i < (int)e->numTouches; ++i) {
+        if( !e->touches[i].isChanged ) continue;
+        int j = e->touches[i].identifier;
+        if( j >= countof(touch) ) continue;
+
+        touch[j].cached = vec2(e->touches[i].clientX, e->touches[i].clientY);
+        if (!touch[j].init) touch[j].init = 1, touch[j].origin = touch[j].prev = touch[j].move = touch[j].cached;
+    }
+
+    return EM_TRUE;
+}
+
+static EM_BOOL touch_end(int eventType, const EmscriptenTouchEvent *e, void *userData) {
+    for( int i = 0; i < (int)e->numTouches; ++i) {
+        if( !e->touches[i].isChanged ) continue;
+        int j = e->touches[i].identifier;
+        if( j >= countof(touch) ) continue;
+
+        //memset(&touch[j], 0, sizeof(touch[j]));
+        touch[j].init = false;
+        touch[j].move = touch[j].cached = touch[j].origin = touch[j].prev = vec2(0,0);
+    }
+
+    return EM_TRUE;
+}
+
+void input_touch_area(unsigned button, vec2 from_ndc, vec2 to_ndc) {
+    if( button >= countof(touch) ) return;
+    touch[button].area = vec4( from_ndc.x, from_ndc.y, to_ndc.x, to_ndc.y );
+}
+
+void touch_init() {
+    memset(touch, 0, sizeof(touch));
+
+    // default areas: left screen (button #0) and right_screen (button #1)
+    input_touch_area(0, vec2(0.0,0.0), vec2(0.5,1.0));
+    input_touch_area(1, vec2(0.5,0.0), vec2(1.0,1.0));
+
+    emscripten_set_touchstart_callback("#canvas", 0, EM_FALSE, &touch_move);
+    emscripten_set_touchmove_callback("#canvas", 0, EM_FALSE, &touch_move);
+    emscripten_set_touchend_callback("#canvas", 0, EM_FALSE, &touch_end);
+}
+
+void touch_flush() {
+    for( int j = 0; j < countof(touch); ++j) {
+        touch[j].prev = touch[j].move;
+        touch[j].move = touch[j].cached;
+    }
+}
+
+static
+unsigned input_locate_button(unsigned button) {
+    // locate button in user-defined areas
+    vec2 c = window_canvas();
+    for( int j = 0; j < countof(touch); ++j ) {
+        if( touch[j].init )
+        if( touch[j].origin.x >= (touch[button].area.x * c.x) )
+        if( touch[j].origin.y >= (touch[button].area.y * c.y) )
+        if( touch[j].origin.x <= (touch[button].area.z * c.x) )
+        if( touch[j].origin.y <= (touch[button].area.w * c.y) )
+            return j;
+    }
+    return ~0u;
+}
+
+vec2 input_touch(unsigned button, float sensitivity) {
+    button = input_locate_button(button);
+    if( button >= countof(touch) ) return vec2(0,0);
+    return touch[button].init ? touch[button].move : vec2(0,0);
+}
+
+vec2 input_touch_delta(unsigned button, float sensitivity) {
+    button = input_locate_button(button);
+    if( button >= countof(touch) ) return vec2(0,0);
+    return touch[button].init ? scale2( sub2(touch[button].move, touch[button].prev), sensitivity ) : vec2(0,0);
+}
+
+vec2 input_touch_delta_from_origin(unsigned button, float sensitivity) {
+    button = input_locate_button(button);
+    if( button >= countof(touch) ) return vec2(0,0);
+    return touch[button].init ? scale2( sub2(touch[button].move, touch[button].origin), sensitivity ) : vec2(0,0);
+}
+
+bool input_touch_active() {
+    for( int j = 0; j < countof(touch); ++j ) {
+        if( touch[j].init ) return true;
+    }
+    return false;
+}
+
+#endif // !is(ems)
 
 // ----------------------------------------------------------------------------
 
@@ -7913,31 +8092,6 @@ void glCopyBackbufferToTexture( texture_t *tex ) { // unused
     glCopyTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, 0, 0, window_width(), window_height(), 0 );
 }
 
-void glNewFrame() {
-    glViewport(0, 0, window_width(), window_height());
-    //glClearColor(0,0,0,1);
-    //glClearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
-
-    // blending defaults
-    glEnable(GL_BLEND);
-
-    // culling defaults
-//  glEnable(GL_CULL_FACE);
-//  glCullFace(GL_BACK);
-//  glFrontFace(GL_CCW);
-
-    // depth-testing defaults
-    glEnable(GL_DEPTH_TEST);
-//  glDepthFunc(GL_LESS);
-
-    // depth-writing defaults
-//  glDepthMask(GL_TRUE);
-
-    // seamless cubemaps
-//  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-}
-
 // ----------------------------------------------------------------------------
 // embedded shaders (@fixme: promote to files?)
 
@@ -8703,7 +8857,7 @@ unsigned shader(const char *vs, const char *fs, const char *attribs, const char 
     vs = vs[0] == '#' && vs[1] == 'v' ? vs : va("#version %s\n%s", glsl_version, vs ? vs : "");
     fs = fs[0] == '#' && fs[1] == 'v' ? fs : va("#version %s\n%s", glsl_version, fs ? fs : "");
 
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     {
         char *vs_ = REALLOC( 0, strlen(vs) + 512 ); strcpy(vs_, vs);
         char *fs_ = REALLOC( 0, strlen(fs) + 512 ); strcpy(fs_, fs);
@@ -10198,7 +10352,7 @@ void* screenshot( int n ) { // 3 RGB, 4 RGBA, -3 BGR, -4 BGRA
 }
 
 void* screenshot_async( int n ) { // 3 RGB, 4 RGBA, -3 BGR, -4 BGRA
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     return screenshot(n); // no glMapBuffer() on emscripten
 #else
     // async, 0 ms -- @fixme: MSAA can cause some artifacts with PBOs: either use glDisable(GL_MULTISAMPLE) when recording or do not create window with WINDOW_MSAAx options at all.
@@ -11763,12 +11917,20 @@ X(0xBE1250),X(0xFF6C24),X(0xA8E72E),X(0x00B543),X(0x065AB5),X(0x754665),X(0xFF6E
 };
 #undef X
 
-static uint32_t    dd_color = ~0u;
-static GLuint      dd_program = -1;
-static int         dd_u_color = -1;
+typedef struct text2d_cmd {
+    const char *str;
+    uint32_t col;
+    vec3 pos;
+    float sca;
+} text2d_cmd;
+
+static uint32_t                  dd_color = ~0u;
+static GLuint                    dd_program = -1;
+static int                       dd_u_color = -1;
 static map(unsigned,array(vec3)) dd_lists[2][3] = {0}; // [0/1 ontop][0/1/2 thin lines/thick lines/points]
-static bool        dd_use_line = 0;
-static bool        dd_ontop = 0;
+static bool                      dd_use_line = 0;
+static bool                      dd_ontop = 0;
+static array(text2d_cmd)         dd_text2d;
 
 void ddraw_flush() {
     ddraw_flush_projview(camera_get_active()->proj, camera_get_active()->view);
@@ -11814,19 +11976,18 @@ void ddraw_flush_projview(mat44 proj, mat44 view) {
         }
     }
 
-    if(0)
-    {
-        // ddraw_text2d(vec3(0,0,1), "hello world\n123");
+    if(1) { // text 2d
+        // queue
+        for(int i = 0; i < array_count(dd_text2d); ++i) {
+            ddraw_color(dd_text2d[i].col);
+            ddraw_text(dd_text2d[i].pos, dd_text2d[i].sca, dd_text2d[i].str); 
+        }
+
+        // flush
         float mvp[16]; float zdepth_max = 1;
         ortho44(mvp, -window_width()/2, window_width()/2, -window_height()/2, window_height()/2, -1, 1);
         translate44(mvp, -window_width()/2, window_height()/2, 0);
         glUniformMatrix4fv(glGetUniformLocation(dd_program, "u_MVP"), 1, GL_FALSE, mvp);
-        ddraw_color(BLACK);
-        for(int i = 0; i < 10; ++i)
-        ddraw_text(vec3(window_width()/2,-(i * 12),0), 0.5, "\nhello world"); // scale 0.5 is like 12units each
-        ddraw_color(WHITE);
-        for(int i = 0; i < 10; ++i)
-        ddraw_text(vec3(window_width()/2+1,-(i * 12)-1,0), 0.5, "\nhello world"); // scale 0.5 is like 12units each
         for( int i = 0; i < 3; ++i ) { // [0] thin, [1] thick, [2] points
             GLenum mode = i < 2 ? GL_LINES : GL_POINTS;
             glLineWidth(i == 1 ? 1 : 0.3); // 0.625);
@@ -11846,8 +12007,11 @@ void ddraw_flush_projview(mat44 proj, mat44 view) {
                 array_clear(list);
             }
         }
-    }
 
+        // clear
+        array_resize(dd_text2d, 0);
+    }
+    
     glDisable(GL_LINE_SMOOTH);
     glDisable(GL_PROGRAM_POINT_SIZE);
 
@@ -11957,6 +12121,14 @@ void ddraw_grid(float scale) {
     ddraw_axis(scale ? scale : 100);
 }
 
+void ddraw_text2d(vec2 pos, const char *text) {
+    struct text2d_cmd t = {0};
+    t.sca = 0.5f; // 0.5 is like vertical 12units each
+    t.pos = vec3(pos.x, pos.y - 12, 0);
+    t.str = text;
+    t.col = YELLOW;
+    array_push(dd_text2d, t);
+}
 
 void (ddraw_text)(vec3 pos, float scale, const char *text) {
     // [ref] http://paulbourke.net/dataformats/hershey/ (PD)
@@ -12576,10 +12748,10 @@ void camera_move(camera_t *cam, float x, float y, float z) {
     if( smoothing ) {
         float move_friction = 0.99f;
         cam->last_move = scale3(cam->last_move, move_friction);
-        float move_filtering = 0.025f;
-        x = cam->last_move.x = x * move_filtering + cam->last_move.x * (1 - move_filtering);
-        y = cam->last_move.y = y * move_filtering + cam->last_move.y * (1 - move_filtering);
-        z = cam->last_move.z = z * move_filtering + cam->last_move.z * (1 - move_filtering);
+        float move_filtering = 0.975f;
+        x = cam->last_move.x = x * (1 - move_filtering) + cam->last_move.x * move_filtering;
+        y = cam->last_move.y = y * (1 - move_filtering) + cam->last_move.y * move_filtering;
+        z = cam->last_move.z = z * (1 - move_filtering) + cam->last_move.z * move_filtering;
     }
 
     vec3 dir = norm3(cross3(cam->look, cam->up));
@@ -13963,8 +14135,12 @@ int (PANIC)(const char *error, const char *file, int line) {
 
 static struct nk_context *ui_ctx;
 static struct nk_glfw ui_glfw = {0};
+static bool   nk_baked_fonts = false;
 
 static void nk_config_custom_fonts() {
+    // do not bake fonts until they're cooked
+    if( cooker_progress() < 100 ) return;
+
     /* Load Fonts: if none of these are loaded a default font will be used  */
     /* Load Cursor: if you uncomment cursor loading please hide the cursor */
     //{struct nk_font_atlas *atlas;
@@ -13997,6 +14173,7 @@ static void nk_config_custom_fonts() {
 //    cfg.oversample_h = 1;
 //    cfg.oversample_v = 1;
 
+    // bake fonts
     struct nk_font *font = NULL;
     nk_glfw3_font_stash_begin(&ui_glfw, &atlas); // nk_sdl_font_stash_begin(&atlas);
 #if 0 // is(win32)
@@ -14009,6 +14186,8 @@ static void nk_config_custom_fonts() {
     nk_glfw3_font_stash_end(&ui_glfw); // nk_sdl_font_stash_end();
     /* nk_style_load_all_cursors(ctx, atlas->cursors); glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_HIDDEN); */
     if(font) nk_style_set_font(ui_ctx, &font->handle);
+
+    nk_baked_fonts = true;
 }
 
 static void nk_config_custom_style() {
@@ -14062,23 +14241,6 @@ static void nk_config_custom_style() {
     s->combo.border = 0;
     s->button.border = 1;
     s->edit.border = 0;
-}
-
-void ui_destroy(void) {
-    if(ui_ctx) {
-        nk_glfw3_shutdown(&ui_glfw); // nk_sdl_shutdown();
-        ui_ctx = 0;
-    }
-}
-
-void ui_create() {
-    if(!ui_ctx) {
-        ui_ctx = nk_glfw3_init(&ui_glfw, window_handle(), NK_GLFW3_INSTALL_CALLBACKS); // nk_sdl_init(window_handle());
-        atexit(ui_destroy);
-
-        nk_config_custom_fonts();
-        nk_config_custom_style();
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -14235,7 +14397,28 @@ int ui_active() {
     return ui_actived; //window_has_cursor() && nk_window_is_any_hovered(ui_ctx) && nk_item_is_any_active(ui_ctx);
 }
 
+void ui_destroy(void) {
+    if(ui_ctx) {
+        nk_glfw3_shutdown(&ui_glfw); // nk_sdl_shutdown();
+        ui_ctx = 0;
+    }
+}
+void ui_create() {
+    do_once atexit(ui_destroy);
+
+    // dont render ui till fonts are baked
+    if( !nk_baked_fonts ) return;
+
+    if( ui_dirty ) {
+        nk_glfw3_new_frame(&ui_glfw); //g->glfw);
+        ui_dirty = 0;
+    }
+}
+
 void ui_render() {
+    // dont render ui till fonts are baked
+    if( !nk_baked_fonts ) return;
+
     // draw queued menus
     ui_menu_render();
 
@@ -14246,6 +14429,9 @@ void ui_render() {
      * rendering the UI. */
     //nk_sdl_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
     nk_glfw3_render(&ui_glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
+#if is(ems)
+    glFinish();
+#endif
     ui_dirty = 1;
     ui_hue = 0;
 
@@ -14266,12 +14452,9 @@ static
 int ui_begin_panel_or_window_(const char *title, int flags, bool is_window) {
     if( window_width() <= 0 ) return 0;
     if( window_height() <= 0 ) return 0;
+    if( !nk_baked_fonts ) return 0;
 
     ui_create();
-    if(ui_dirty) {
-        nk_glfw3_new_frame(&ui_glfw);
-        ui_dirty = 0;
-    }
 
     uint64_t hash = 14695981039346656037ULL, mult = 0x100000001b3ULL;
     for(int i = 0; title[i]; ++i) hash = (hash ^ title[i]) * mult;
@@ -15235,6 +15418,7 @@ void window_vsync(float hz) {
 
 //-----------------------------------------------------------------------------
 
+#if 0 // deprecated
 static void (*hooks[64])() = {0};
 static void *userdatas[64] = {0};
 
@@ -15257,6 +15441,7 @@ void window_unhook(void (*func)()) {
         }
     }
 }
+#endif
 
 static GLFWwindow *window;
 static int w, h, xpos, ypos, paused;
@@ -15365,25 +15550,50 @@ void window_hints(unsigned flags) {
     if(flags & WINDOW_MSAA8) glfwWindowHint(GLFW_SAMPLES, 8); // x8 AA
 }
 
-enum app_window_mode {
-    APP_WIN_NORMAL = 'w', // normal window mode, user can resize/maximize
-    APP_WIN_MAXIMIZED = 'm', // like normal, but starts maximized
-    APP_WIN_FIXED = 'x', // fixed size mode. User can't resize/maximize
-    APP_WIN_FULLSCREEN = 'f', // real fullscreen. In almost all frontends changes the screen's resolution
-    APP_WIN_FULLSCREEN_DESKTOP = 'd' // "virtual" fullscreen. Removes windows decoration. expands window to full size, changes window size
-};
-
-struct nk_glfw *window_handle_glfw() {
+struct nk_glfw *window_handle_nkglfw() {
     return g->glfw;
 }
 
-bool window_poll() {
-    glfwPollEvents();
-    nk_glfw3_new_frame(g->glfw);
-    if( glfwWindowShouldClose(g->window) ) {
-        return 0;
-    }
-    return 1;
+void glNewFrame() {
+
+#if 0 // is(ems)
+    int canvasWidth, canvasHeight;
+    emscripten_get_canvas_element_size("#canvas", &canvasWidth, &canvasHeight);
+    w = canvasWidth;
+    h = canvasHeight;
+    //printf("%dx%d\n", w, h);
+#else
+    //glfwGetWindowSize(window, &w, &h);
+    glfwGetFramebufferSize(window, &w, &h);
+    //printf("%dx%d\n", w, h);
+#endif
+
+    g->width = w;
+    g->height = h;
+
+    // blending defaults
+    glEnable(GL_BLEND);
+
+    // culling defaults
+//  glEnable(GL_CULL_FACE);
+//  glCullFace(GL_BACK);
+//  glFrontFace(GL_CCW);
+
+    // depth-testing defaults
+    glEnable(GL_DEPTH_TEST);
+//  glDepthFunc(GL_LESS);
+
+    // depth-writing defaults
+//  glDepthMask(GL_TRUE);
+
+    // seamless cubemaps
+//  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
+    glViewport(0, 0, window_width(), window_height());
+
+    //glClearColor(0.15,0.15,0.15,1);
+    //glClearColor( clearColor.r, clearColor.g, clearColor.b, clearColor.a );
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
 }
 
 bool window_create_from_handle(void *handle, float scale, unsigned flags) {
@@ -15391,7 +15601,7 @@ bool window_create_from_handle(void *handle, float scale, unsigned flags) {
     fwk_init();
     if(!t) t = glfwGetTime();
 
-    #ifdef __EMSCRIPTEN__
+    #if is(ems)
     scale = 100.f;
     #endif
 
@@ -15458,7 +15668,7 @@ bool window_create_from_handle(void *handle, float scale, unsigned flags) {
 
     glfwMakeContextCurrent(window);
 
-    #ifdef __EMSCRIPTEN__
+    #if is(ems)
     if( FLAGS_FULLSCREEN ) window_fullscreen(1);
     #else
     gladLoadGL(glfwGetProcAddress);
@@ -15466,8 +15676,9 @@ bool window_create_from_handle(void *handle, float scale, unsigned flags) {
 
     glDebugEnable();
     
+    // setup nuklear ui
     ui_ctx = nk_glfw3_init(&ui_glfw, window, NK_GLFW3_INSTALL_CALLBACKS);
-    
+   
     //glEnable(GL_TEXTURE_2D);
 
     // 0:disable vsync, 1:enable vsync, <0:adaptive (allow vsync when framerate is higher than syncrate and disable vsync when framerate drops below syncrate)
@@ -15503,7 +15714,6 @@ bool window_create_from_handle(void *handle, float scale, unsigned flags) {
             for( int frames = 0; frames < 10 && window_swap(); frames += cooker_progress() >= 100 ) {
                 window_title(va("Cooking assets %.2d%%", cooker_progress()));
 
-                glfwGetFramebufferSize(window, &w, &h);
                 glNewFrame();
 
                 static float previous[100] = {0};
@@ -15530,7 +15740,6 @@ bool window_create_from_handle(void *handle, float scale, unsigned flags) {
                 do_once window_visible(1);
             }
             // set black screen
-            glfwGetFramebufferSize(window, &w, &h);
             glNewFrame();
             window_swap();
             window_title("");
@@ -15544,9 +15753,15 @@ bool window_create(float scale, unsigned flags) {
     return window_create_from_handle(NULL, scale, flags);
 }
 
+void window_lock_fps(float fps) {
+    hz = fps;
+}
+void window_unlock_fps() {
+    hz = 0;
+}
+
 static double boot_time = 0;
 
-static
 char* window_stats() {
     static double num_frames = 0, begin = FLT_MAX, prev_frame = 0;
 
@@ -15575,97 +15790,103 @@ char* window_stats() {
     return buf + 3 * (buf[0] == ' ');
 }
 
-static int window_needs_flush = 1;
-static int unlock_preswap_events = 0;
-void window_flush() {
+int window_frame_begin() {
+    glfwPollEvents();
 
-#ifdef __EMSCRIPTEN__
-    vec3 background = vec3(0,0,0);
-    // glClear(GL_COLOR_BUFFER_BIT);
-    // glClearColor(background.x / 255, background.y / 255, background.z / 255, 1 );
+    // dont allow cooking abort: some OSes cannot terminate threads -> threads may leave temporary files on disc
+    static bool has_tools; do_once has_tools = file_directory(TOOLS);
+    if( has_tools && cooker_progress() < 100 ) glfwSetWindowShouldClose(g->window, GLFW_FALSE);
 
-    /* IMPORTANT: `nk_glfw_render` modifies some global OpenGL state
-     * with blending, scissor, face culling, depth test and viewport and
-     * defaults everything back into a default state.
-     * Make sure to either a.) save and restore or b.) reset your own state after
-     * rendering the UI. */
-    nk_glfw3_render(g->glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_MEMORY, MAX_ELEMENT_MEMORY);
-    glfwSwapBuffers(g->window);
-
-    return;
-#endif
-
-    // flush batching systems that need to be rendered before frame swapping. order matters.
-    if( window_needs_flush ) {
-        window_needs_flush = 0;
-
-        if( unlock_preswap_events ) {
-            // flush all batched sprites before swap
-            sprite_flush();
-
-            // queue ui drawcalls for profiler
-            // hack: skip first frame, because of conflicts with ui_menu & ui_begin auto-row order
-            static int once = 0; if(once) profile_render(); once = 1;
-
-            // flush all debugdraw calls before swap
-            dd_ontop = 0;
-            ddraw_flush();
-            glClear(GL_DEPTH_BUFFER_BIT);
-            dd_ontop = 1;
-            ddraw_flush();
-
-            font_goto(0,0);
-
-            // flush all batched ui before swap (creates single dummy if no batches are found)
-            ui_create();
-            ui_render();
-        }
-    }
-}
-void window_lock_fps(float fps) {
-    hz = fps;
-}
-void window_unlock_fps() {
-    hz = 0;
-}
-int window_swap() {
-
-#ifdef __EMSCRIPTEN__ // @fixme, add all missing features below
-
-    static bool first_frame = 1;
-    if( first_frame ) {
-        first_frame = 0;
-    } else {
-        window_flush();
-    }
-
-    if( !window_poll() ) {
-        window_loop_exit();
+    if( glfwWindowShouldClose(g->window) ) {
         return 0;
     }
-    return 1;
 
-    {
-        int ready = !glfwWindowShouldClose(window);
-        if( ready ) {
-            window_flush();
-            glfwPollEvents();
-            glfwSwapBuffers(window);
-        } else {
-            window_loop_exit(); // finish emscripten loop automatically
-        }
-        return ready;
+    glNewFrame();
+
+    ui_create();
+
+#if 0 // deprecated
+    // run user-defined hooks
+    for(int i = 0; i < 64; ++i) {
+        if( hooks[i] ) hooks[i]( userdatas[i] );
     }
-
 #endif
 
-    int ready = !glfwWindowShouldClose(window);
-    if( !ready ) {
+    double now = paused ? t : glfwGetTime();
+    dt = now - t;
+    t = now;
 
+    char *st = window_stats();
+    static double timer = 0;
+    timer += window_delta();
+    if( timer >= 0.25 ) {
+        glfwSetWindowTitle(window, st);
+        timer = 0;
+    }
+
+    void input_update();
+    input_update();
+
+    return 1;
+}
+
+void window_frame_end() {
+    // flush batching systems that need to be rendered before frame swapping. order matters.
+    {
+        font_goto(0,0);        
+        touch_flush();
+        sprite_flush();
+
+        // render profiler except during cooking stage 
+        // also, we defer profile rendering to 10th frame at least, so the user may have chance to actually call any UI call before us
+        // (given the UI policy nature, first-called first-served, we dont want profile tab to be on top of all other tabs)
+        // if( cooker_progress() >= 100 ) { static int once = 0; if(once) profile_render(); once = 1; }
+        static unsigned frames = 0; if(frames > 10) profile_render(); else frames += cooker_progress() >= 100;
+ 
+        // flush all debugdraw calls before swap
+        dd_ontop = 0;
+        ddraw_flush();
+        glClear(GL_DEPTH_BUFFER_BIT);
+        dd_ontop = 1;
+        ddraw_flush();
+
+        ui_render();
+    }
+
+#if !is(ems)
+    // save screenshot if queued
+    if( screenshot_file[0] ) {
+        int n = 3;
+        void *rgb = screenshot(n);
+        stbi_flip_vertically_on_write(true);
+        if(!stbi_write_png(screenshot_file, w, h, n, rgb, n * w) ) {
+            PANIC("!could not write screenshot file `%s`\n", screenshot_file);
+        }
+        screenshot_file[0] = 0;
+    }
+    if( videorec_active() ) {
+        void videorec_frame();
+        videorec_frame();
+    }
+#endif
+}
+
+void window_frame_swap() {
+    // glFinish();
+#if !is(ems)
+    window_vsync(hz);
+#endif
+    glfwSwapBuffers(window);
+    // emscripten_webgl_commit_frame();
+}
+
+static
+void window_shutdown() {
+    do_once {
         #if OFLAG < 3
         #if WITH_SELFIES
 
-//            static int frame = 100;
+    //      static int frame = 100;
             bool do_it = cooker_progress() >= 100; // && ( frame > 0 && !--frame ); // || input_down(KEY_F12)
             if(do_it) {
                snprintf(screenshot_file, 512, "%s.png", app_name());
@@ -15682,91 +15903,56 @@ int window_swap() {
         #endif
         #endif
 
-        window_loop_exit(); // finish emscripten loop automatically
-
+        window_loop_exit(); // finish emscripten loop automatically        
     }
-    else {
-        static int first = 1;
-
-        window_flush();
-
-        glfwPollEvents();
-
-        // input_update(); // already hooked!
-
-        double now = paused ? t : glfwGetTime();
-        dt = now - t;
-        t = now;
-
-#if 0
-        static unsigned frames = 0;
-        static double t = 0;
-        t += window_delta();
-        if( t >= 1.0 ) {
-            fps = frames / t;
-            glfwSetWindowTitle(window, va("%s | %5.2f fps (%.2fms)", title, fps, (t*1000.0) / fps));
-            frames = 0;
-            t = 0;
-        }
-        ++frames;
-#else
-        char *st = window_stats();
-        static double t = 0;
-        t += window_delta();
-        if( t >= 0.25 ) {
-            glfwSetWindowTitle(window, st);
-            t = 0;
-        }
-#endif
-
-        // save screenshot if queued
-        if( screenshot_file[0] ) {
-            int n = 3;
-            void *rgb = screenshot(n);
-            stbi_flip_vertically_on_write(true);
-            if(!stbi_write_png(screenshot_file, w, h, n, rgb, n * w) ) {
-                PANIC("!could not write screenshot file `%s`\n", screenshot_file);
-            }
-            screenshot_file[0] = 0;
-        }
-        if( videorec_active() ) {
-            void videorec_frame();
-            videorec_frame();
-        }
-
-        if( !first ) {
-            // glFinish();
-            window_vsync(hz);
-            glfwSwapBuffers(window);
-            ++frame_count;
-        }
-
-        glfwGetFramebufferSize(window, &w, &h); //glfwGetWindowSize(window, &w, &h);
-        glNewFrame();
-        window_needs_flush = 1;
-
-        // run user-defined hooks
-        for(int i = 0; i < 64; ++i) {
-            if( hooks[i] ) hooks[i]( userdatas[i] );
-        }
-
-        first = 0;
-    }
-    return ready;
 }
 
-void window_loop(void (*function)(void* loopArg), void* loopArg ) {
-#ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(function, loopArg, 0, 1);
+int window_swap() {
+
+    // end frame
+    if( frame_count > 0 ) {
+        window_frame_end();
+        window_frame_swap();
+    }
+
+    ++frame_count;
+
+    // begin frame
+    int ready = window_frame_begin();
+    if( !ready ) {
+        window_shutdown();
+        return 0;
+    }
+    return 1;
+}
+
+static
+void (*window_render_callback)(void* loopArg);
+
+static
+void window_loop_wrapper( void *loopArg ) {
+    if( window_frame_begin() ) {
+        window_render_callback(loopArg);
+        window_frame_end();
+        window_frame_swap();
+    } else {
+        do_once window_shutdown();
+    }
+}
+
+void window_loop(void (*user_function)(void* loopArg), void* loopArg ) {
+#if is(ems)
+    window_render_callback = user_function;
+    emscripten_set_main_loop_arg(window_loop_wrapper, loopArg, 0, 1);
 #else
     g->keep_running = true;
     while (g->keep_running)
-        function(loopArg);
+        user_function(loopArg);
 #endif /* __EMSCRIPTEN__ */
 }
 
 void window_loop_exit() {
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     emscripten_cancel_main_loop();
 #else
     g->keep_running = false;
@@ -15774,7 +15960,7 @@ void window_loop_exit() {
 }
 
 vec2 window_canvas() {
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     int width = EM_ASM_INT_V(return window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth);
     int height = EM_ASM_INT_V(return window.innerHeight|| document.documentElement.clientHeight|| document.body.clientHeight);
     return vec2(width, height);
@@ -15846,8 +16032,6 @@ void* window_handle() {
 // -----------------------------------------------------------------------------
 // fullscreen
 
-#if 0 // to deprecate
-
 static
 GLFWmonitor *window_find_monitor(int wx, int wy) {
     GLFWmonitor *monitor = glfwGetPrimaryMonitor();
@@ -15855,7 +16039,7 @@ GLFWmonitor *window_find_monitor(int wx, int wy) {
     // find best monitor given current window coordinates. @todo: select by ocuppied window area inside each monitor instead.
     int num_monitors = 0;
     GLFWmonitor** monitors = glfwGetMonitors(&num_monitors);
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     return *monitors;
 #else
     for( int i = 0; i < num_monitors; ++i) {
@@ -15866,6 +16050,9 @@ GLFWmonitor *window_find_monitor(int wx, int wy) {
     return monitor;
 #endif
 }
+
+#if 0 // to deprecate
+
 void window_fullscreen(int enabled) {
     fullscreen = !!enabled;
 #ifndef __EMSCRIPTEN__
@@ -15891,7 +16078,7 @@ int window_has_fullscreen() {
 #else
 
 int window_has_fullscreen() {
-#ifdef __EMSCRIPTEN__
+#if is(ems)
     EmscriptenFullscreenChangeEvent fsce;
     emscripten_get_fullscreen_status(&fsce);
     return !!fsce.isFullscreen;
@@ -15903,7 +16090,9 @@ int window_has_fullscreen() {
 void window_fullscreen(int enabled) {
     if( window_has_fullscreen() == !!enabled ) return;
 
-#ifdef __EMSCRIPTEN__
+#if is(ems)
+
+#if 0 // deprecated: crash
     if( enabled ) {
         emscripten_exit_soft_fullscreen();
 
@@ -15911,19 +16100,26 @@ void window_fullscreen(int enabled) {
         EM_ASM(JSEvents.inEventHandler = true);
         EM_ASM(JSEvents.currentEventHandler = {allowsDeferredCalls:true});
 
-        EmscriptenFullscreenStrategy strategy = {
-            .scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH,
-            .canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_NONE,
-            .filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT,
-            .canvasResizedCallback = NULL,
-            .canvasResizedCallbackUserData = NULL
-        };
-        /*emscripten_request_fullscreen_strategy(NULL, EM_TRUE, &strategy);*/
-        emscripten_enter_soft_fullscreen(NULL, &strategy);
-    } else {            
+        EmscriptenFullscreenStrategy strategy = {0};
+        strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_STRETCH; // _ASPECT
+        strategy.canvasResolutionScaleMode = EMSCRIPTEN_FULLSCREEN_CANVAS_SCALE_STDDEF; // _NONE _HIDEF
+        strategy.filteringMode = EMSCRIPTEN_FULLSCREEN_FILTERING_DEFAULT; // _NEAREST
+
+        emscripten_request_fullscreen_strategy(NULL, EM_FALSE/*EM_TRUE*/, &strategy);
+        //emscripten_enter_soft_fullscreen(NULL, &strategy);
+    } else {
         emscripten_exit_fullscreen();
     }
 #else
+    if( enabled )
+    EM_ASM(Module.requestFullscreen(1, 1)); 
+    else
+    EM_ASM(Module.exitFullscreen()); 
+#endif
+
+#else
+
+#if 0
     if( enabled ) {
         /*glfwGetWindowPos(g->window, &g->window_xpos, &g->window_ypos);*/
         glfwGetWindowSize(g->window, &g->width, &g->height);
@@ -15931,6 +16127,22 @@ void window_fullscreen(int enabled) {
     } else {            
         glfwSetWindowMonitor(g->window, NULL, 0, 0, g->width, g->height, GLFW_DONT_CARE);
     }
+#else
+    if( enabled ) {
+        int wx = 0, wy = 0; glfwGetWindowPos(window, &wx, &wy);
+        GLFWmonitor *monitor = window_find_monitor(wx, wy);
+
+        wprev = w, hprev = h, xprev = wx, yprev = wy; // save window context for further restoring
+
+        int width, height;
+        glfwGetMonitorWorkarea(monitor, NULL, NULL, &width, &height);
+        glfwSetWindowMonitor(window, monitor, 0, 0, width, height, GLFW_DONT_CARE);
+    } else {
+        glfwSetWindowMonitor(window, NULL, xpos, ypos, wprev, hprev, GLFW_DONT_CARE);
+        glfwSetWindowPos(window, xprev, yprev);
+    }
+#endif
+
 #endif
 }
 
@@ -16698,11 +16910,11 @@ void editor() {
 
     if( ui_menu( ICON_BARS ";New Project;" ICON_TEST_GLYPH "Open Project;-Save Project;Settings;-Quit") ) printf("Selected File.%d\n", ui_item());
         if( ui_item() == 6 ) exit(0);
-        if( ui_menu( ICON_FOLDER_OPEN ));
+        if( ui_menu( ICON_FOLDER_OPEN )) {}
         if( ui_menu( window_has_pause() ? ICON_PLAY : ICON_PAUSE )) window_pause( window_has_pause() ^ 1 );
         if( ui_menu( ICON_STOP )) window_pause(1);
-    if( ui_menu( va(ICON_DATABASE " %s", xstats() ))); // 012/136MB
-    if( ui_menu( va(ICON_CUBE " %d", 0 ))); // map_count(offline) )));
+    if( ui_menu( va(ICON_DATABASE " %s", xstats() ))) {} // 012/136MB
+    if( ui_menu( va(ICON_CUBE " %d", 0 ))) {} // map_count(offline) )));
     if( ui_menu("Edit;Cut;Copy;Paste") ) printf("Selected Edit.%d\n", ui_item());
 
     if( editor_mode ) editor_update();
@@ -16743,6 +16955,7 @@ static void fwk_pre_init() {
 
     storage_mount("save/"); // for ems
     storage_read(); // for ems
+    touch_init(); // for ems
     // window_swap();
 
     script_init();
@@ -16764,16 +16977,13 @@ static void fwk_post_init(float refresh_rate) {
     // mount physical filesystems first (higher priority)
     if(!mounted) vfs_mount(ART);
 
-    // config nuklear ui
+    // config nuklear UI (after VFS mounting, as UI needs cooked fonts here)
     nk_config_custom_fonts();
     nk_config_custom_style();
-    
-    // unlock preswap events
-    unlock_preswap_events = 1;
 
     // init more subsystems
 #ifndef __EMSCRIPTEN__ // @fixme ems -> shaders
-    scene_push();           // create an empty scene by default
+    scene_push();      // create an empty scene by default
 #endif
     input_init();
     network_init();

@@ -30,14 +30,24 @@ int main(void) {
         dy = dy + delta * 0.8f;
 
         // fps camera
-        bool active = ui_active() || ui_hover() || gizmo_active() ? false : input(MOUSE_L) || input(MOUSE_M) || input(MOUSE_R);
-        window_cursor( !active );
+        if( input(GAMEPAD_CONNECTED) ) {
+            vec2 filtered_lpad = input_filter_deadzone(input2(GAMEPAD_LPAD), 0.1f /*deadzone*/); // filtered pad
+            vec2 filtered_rpad = input_filter_deadzone(input2(GAMEPAD_RPAD), 0.1f /*deadzone*/); // filtered pad
 
-        if( active ) cam.speed = clampf(cam.speed + input_diff(MOUSE_W) / 10, 0.05f, 5.0f);
-        vec2 mouse = scale2(vec2(input_diff(MOUSE_X), -input_diff(MOUSE_Y)), 0.2f * active);
-        vec3 wasdec = scale3(vec3(input(KEY_D)-input(KEY_A),input(KEY_E)-input(KEY_C),input(KEY_W)-input(KEY_S)), cam.speed);
-        camera_move(&cam, wasdec.x,wasdec.y,wasdec.z);
-        camera_fps(&cam, mouse.x,mouse.y);
+            vec2 mouse = scale2(vec2(filtered_rpad.x, filtered_rpad.y), 1.0f);
+            vec3 wasdec = scale3(vec3(filtered_lpad.x, input(GAMEPAD_LT) - input(GAMEPAD_RT), filtered_lpad.y), 1.0f);
+            camera_move(&cam, wasdec.x,wasdec.y,wasdec.z);
+            camera_fps(&cam, mouse.x,mouse.y);        
+        } else {
+            bool active = ui_active() || ui_hover() || gizmo_active() ? false : input(MOUSE_L) || input(MOUSE_M) || input(MOUSE_R);
+            window_cursor( !active );
+
+            if( active ) cam.speed = clampf(cam.speed + input_diff(MOUSE_W) / 10, 0.05f, 5.0f);
+            vec2 mouse = scale2(vec2(input_diff(MOUSE_X), -input_diff(MOUSE_Y)), 0.2f * active);
+            vec3 wasdec = scale3(vec3(input(KEY_D)-input(KEY_A),input(KEY_E)-input(KEY_C),input(KEY_W)-input(KEY_S)), cam.speed);
+            camera_move(&cam, wasdec.x,wasdec.y,wasdec.z);
+            camera_fps(&cam, mouse.x,mouse.y);        
+        }
 
         // projview matrix
         mat44 projview; multiply44x2(projview, cam.proj, cam.view);
